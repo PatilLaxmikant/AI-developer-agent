@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🤖 Gemini AI Developer
 
-## Getting Started
+An advanced AI developer agent built with **Streamlit** and **Google Gemini API**. This tool can help you write code, execute commands, analyze your project, and fetch real-world data—all through a chat interface.
 
-First, run the development server:
+## ✨ Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+*   **Chat with AI**: Ask coding questions or general queries.
+*   **Project Management**:
+    *   📂 **File Explorer**: View your project structure and read files.
+    *   📌 **Workspace**: All generated files are safely isolated in a `workspace/` directory.
+    *   📦 **Download**: Zip and download your entire workspace with one click.
+*   **Autonomous Agent**:
+    *   Can write files and run shell commands (with "Safe Mode" approval).
+    *   Executes complex tasks by chaining multiple steps.
+*   **Real-World Tools**:
+    *   🌤️ **Weather**: Get current weather (`get_weather`).
+    *   🌐 **Web Search**: Search the internet (`web_search`).
+    *   📖 **Wikipedia**: Get summaries (`search_wikipedia`).
+    *   📈 **Stocks**: Get stock prices (`get_stock_price`).
+    *   🔗 **Read URL**: Extract text from websites (`read_url`).
+    *   🖥️ **System Info**: View CPU/RAM usage (`get_system_info`).
+    *   🌍 **World Time**: Check time in any timezone (`get_world_time`).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1.  **Clone the repository** (or download the source):
+    ```bash
+    git clone https://github.com/PatilLaxmikant/AI-developer-agent.git
+    cd AI-developer-agent
+    ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-## Learn More
+## 🚀 Usage
 
-To learn more about Next.js, take a look at the following resources:
+1.  **Run the application**:
+    ```bash
+    streamlit run app.py
+    ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2.  **Configure**:
+    *   **API Key**: The key is hardcoded in the app for convenience, but for production, use environment variables.
+    *   **Working Directory**: Defaults to `workspace`.
+    *   **Safe Mode**: Enabled by default. You will be asked to approve any file writes or terminal commands. Tool usage (like weather) is auto-approved.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📂 Project Structure
 
-## Deploy on Vercel
+*   `app.py`: Main application entry point.
+*   `core/`: Core logic.
+    *   `agent.py`: Gemini Agent implementation (prompts, tools, context).
+    *   `project_manager.py`: File system and command execution logic.
+*   `ui/`: User Interface.
+    *   `components.py`: Reusable Streamlit components (sidebar, chat bubbles).
+*   `requirements.txt`: Python dependencies.
+*   `workspace/`: Default directory where the AI creates code files.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🛡️ Security Note
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+*   This tool allows execution of shell commands. Use **Safe Mode** to review actions before they run.
+*   Do not run this on a public server without adding authentication and containerization (Docker).

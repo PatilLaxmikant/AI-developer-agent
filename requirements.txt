@@ -1,0 +1,9 @@
+streamlit
+google-generativeai
+requests
+duckduckgo-search
+beautifulsoup4
+psutil
+wikipedia
+yfinance
+python-dotenv
