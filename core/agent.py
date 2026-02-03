@@ -1,176 +1,202 @@
-import google.generativeai as genai
 import json
-import os
-import requests
-import platform
-import psutil
-import wikipedia
-import yfinance as yf
-from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from openai import OpenAI
+from config import API_KEY, BASE_URL, MODEL_NAME
+from tools import available_tools
 
-class GeminiAgent:
-    def __init__(self, api_key: str, model_name: str, project_manager):
-        genai.configure(api_key=api_key)
-        self.project_manager = project_manager
-        self.model_name = model_name
-        self.model = genai.GenerativeModel(
-            model_name,
-            system_instruction=self._get_system_prompt(),
-            generation_config={"response_mime_type": "application/json"}
-        )
-        self.chat = self.model.start_chat(history=[])
-        self.pinned_files = []
+# Initialize Client
+client = OpenAI(
+    api_key=API_KEY,
+    base_url=BASE_URL
+)
 
-    def _get_system_prompt(self):
-        return """
-        You are an AI Developer and Helpful Assistant.
-        
-        GOAL:
-        Help the user build software, answer questions, and provide information.
-        
-        CAPABILITIES:
-        1.  **Analyze**: Read files and directory structures.
-        2.  **Execute**: Run terminal commands.
-        3.  **Create/Edit**: Write files.
-        4.  **Tools**: Use available tools:
-            - `get_weather(city)`: Get weather for a city.
-            - `web_search(query)`: Search the web for information.
-            - `read_url(url)`: Read content from a webpage.
-            - `get_system_info()`: Get system stats (CPU, RAM, OS).
-            - `search_wikipedia(query)`: Search Wikipedia for a summary.
-            - `get_stock_price(symbol)`: Get current stock price (e.g., AAPL).
-            - `get_world_time(timezone)`: Get current time in a timezone (e.g., Europe/London).
-        
-        RESPONSE FORMAT:
-        You must ALWAYS respond with a JSON object following this schema:
-        {
-            "thought": "Brief reasoning about what to do next.",
-            "response": "Message to display to the user.",
-            "actions": [
-                {
-                    "type": "command",
-                    "command": "ls -la",
-                    "description": "Listing files"
-                },
-                {
-                    "type": "write",
-                    "path": "src/app.py",
-                    "content": "print('hello')",
-                    "description": "Creating app.py"
-                },
-                {
-                    "type": "tool",
-                    "tool_name": "get_weather",
-                    "args": {"city": "London"},
-                    "description": "Checking weather"
-                }
-            ]
-        }
-        
-        RULES:
-        - If no action is needed, "actions" should be empty.
-        - You can answer general questions directly in the "response" field.
-        - Use tools when appropriate.
-        - Always verify your code if possible.
-        """
+SYSTEM_PROMPT = """
+You are a powerful AI Assistant capable of using various tools to solve problems.
+You operate in a loop of: PLAN -> ACTION -> OBSERVE -> OUTPUT.
 
-    def get_context_str(self):
-        context = f"Current Working Directory: {self.project_manager.working_dir}\n"
-        context += "Directory Structure:\n" + self.project_manager.list_files() + "\n"
-        
-        if self.pinned_files:
-            context += "\nPINNED FILES:\n"
-            for path in self.pinned_files:
-                content = self.project_manager.read_file(path)
-                context += f"--- {path} ---\n{content}\n--- End of {path} ---\n"
-        
-        return context
+1. **PLAN**: Analyze the user's request and plan the next step.
+2. **ACTION**: Select a tool to execute that step.
+3. **OBSERVE**: Read the output of the tool.
+4. **OUTPUT**: If the task is complete, provide the final answer.
 
-    def send_message(self, user_input: str):
+**Rules:**
+- Always output strictly in JSON format.
+- Do not output markdown code blocks (like ```json).
+- Only use the tools listed below.
+- If a tool fails, try to understand why and retry or ask the user.
+- For ACTION, the "input" field can be:
+  - a simple string for single-argument tools, OR
+  - a JSON string representing an object (e.g. "{\\"path\\": \\"file.txt\\", \\"content\\": \\"hello\\"}")
+
+**Output JSON Structure:**
+{
+    "step": "plan" | "action" | "output",
+    "content": "Your thought process or final answer",
+    "function": "tool_name_here" (only for 'action'),
+    "input": "tool_input_here" (only for 'action')
+}
+
+**Available Tools:**
+
+Core:
+- get_weather(city)
+- run_command(cmd)
+- web_search(query)
+- get_system_info()
+- read_file(path)
+- write_file(path, content)
+- calculate(expression)
+- get_time()
+
+NLP / Knowledge:
+- wiki_summary(query, sentences=3)
+- translate_text(text, target_lang="en")
+- detect_language(text)
+- sentiment(text)
+- summarize_text(text, max_tokens=130)
+- solve_equation(equation, var="x")
+
+System / Files:
+- get_disk_usage(path="/")
+- list_processes(limit=10)
+- list_files(path=".")
+- zip_path(path, zip_name="archive.zip")
+- unzip_file(zip_path, dest="./unzipped")
+- system_uptime()
+- tail_file(path, lines=20)
+
+Networking / Web:
+- ip_geolocate(ip="")
+- get_public_ip()
+- fetch_page_title(url)
+- fetch_page_meta(url)
+- shorten_url(url)
+- hn_top_stories(limit=5)
+- rss_headlines(url, limit=5)
+- network_speed_test()
+- get_ticker_price(symbol)
+
+Date / Time / Geo:
+- convert_time(time_str, from_tz, to_tz, fmt="%Y-%m-%d %H:%M")
+- is_public_holiday(date_str, country="IN")
+- geocode_address(address)
+- reverse_geocode(lat, lon)
+
+Data / Utils:
+- convert_currency(amount, from_cur, to_cur)
+- pretty_json(raw)
+- markdown_to_html(text)
+- generate_password(length=16)
+- generate_uuid()
+
+Productivity:
+- add_todo(item)
+- list_todos()
+- add_note(text)
+- list_notes(limit=10)
+
+Media:
+- image_info(path)
+- text_to_speech(text, out_file="output.wav")
+- generate_qr(data, filename="qr.png")
+- pdf_to_text(path)
+
+Dev tools:
+- format_python(code)
+- lint_python(code, filename="temp_code.py")
+
+Clipboard & Fun:
+- clipboard_set(text)
+- clipboard_get()
+- programming_joke()
+"""
+
+def process_request(messages):
+    """
+    Process a user request and yield events for the UI.
+    messages: List of message dicts [{"role": "user", "content": "..."}]
+    """
+    # Ensure system prompt is first
+    if not messages or messages[0]["role"] != "system":
+        messages.insert(0, { "role": "system", "content": SYSTEM_PROMPT })
+
+    while True:
         try:
-            # Inject context into the message
-            full_prompt = f"CONTEXT:\n{self.get_context_str()}\n\nUSER REQUEST:\n{user_input}"
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                response_format={"type": "json_object"},
+                messages=messages
+            )
+
+            content = response.choices[0].message.content
+            messages.append({ "role": "assistant", "content": content })
             
-            response = self.chat.send_message(full_prompt)
-            return json.loads(response.text)
-        except Exception as e:
-            return {
-                "thought": "Error processing request",
-                "response": f"API Error: {str(e)}",
-                "actions": []
-            }
-    
-    def add_pinned_file(self, path):
-        if path not in self.pinned_files:
-            self.pinned_files.append(path)
+            try:
+                parsed_response = json.loads(content)
+            except json.JSONDecodeError:
+                yield {"type": "error", "content": f"Invalid JSON from LLM: {content}"}
+                # Feed error back to LLM
+                messages.append({ "role": "user", "content": "Error: You returned invalid JSON. Please correct it." })
+                continue
+
+            step = parsed_response.get("step")
+
+            if step == "plan":
+                yield {"type": "plan", "content": parsed_response.get("content")}
+                continue
+
+            elif step == "action":
+                tool_name = parsed_response.get("function")
+                tool_input = parsed_response.get("input")
+
+                yield {"type": "action", "tool": tool_name, "input": tool_input}
+
+                if tool_name in available_tools:
+                    tool_func = available_tools[tool_name]
+                    try:
+                        # Argument parsing logic
+                        args = tool_input
+                        if isinstance(tool_input, str):
+                            try:
+                                args = json.loads(tool_input)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        if isinstance(args, dict):
+                            output = tool_func(**args)
+                        elif isinstance(args, list):
+                            output = tool_func(*args)
+                        elif args in ("", None):
+                             # Handle no-arg tools called with empty string/None
+                            output = tool_func()
+                        else:
+                            output = tool_func(args)
+                                
+                    except Exception as e:
+                         output = f"Error calling tool: {str(e)}"
+
+                    yield {"type": "observe", "content": output}
+                    
+                    messages.append({ 
+                        "role": "user", 
+                        "content": json.dumps({ "step": "observe", "output": output }) 
+                    })
+                else:
+                    error_msg = f"Tool '{tool_name}' not found."
+                    yield {"type": "error", "content": error_msg}
+                    messages.append({ 
+                        "role": "user", 
+                        "content": json.dumps({ "step": "error", "output": error_msg }) 
+                    })
+                continue
+
+            elif step == "output":
+                yield {"type": "output", "content": parsed_response.get("content")}
+                break
             
-    def remove_pinned_file(self, path):
-        if path in self.pinned_files:
-            self.pinned_files.remove(path)
+            else:
+                yield {"type": "error", "content": f"Unknown step: {step}"}
+                break
 
-    # Tool Implementation
-    def get_weather(self, city: str):
-        try:
-            url = f"https://wttr.in/{city}?format=%C+%t"
-            response = requests.get(url)
-            if response.status_code == 200:
-                return f"The weather in {city} is {response.text}."
-            return "Something went wrong fetching weather."
         except Exception as e:
-            return f"Error fetching weather: {str(e)}"
-
-    def web_search(self, query: str):
-        try:
-            results = DDGS().text(query, max_results=3)
-            return json.dumps(results, indent=2)
-        except Exception as e:
-            return f"Error searching web: {str(e)}"
-
-    def read_url(self, url: str):
-        try:
-            response = requests.get(url)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            # Get text and clean it up
-            text = soup.get_text(separator=' ', strip=True)
-            return text[:2000] + "..." if len(text) > 2000 else text
-        except Exception as e:
-            return f"Error reading URL: {str(e)}"
-
-    def get_system_info(self):
-        try:
-            info = {
-                "OS": platform.system(),
-                "OS Release": platform.release(),
-                "Architecture": platform.machine(),
-                "CPU Usage": f"{psutil.cpu_percent()}%",
-                "RAM Usage": f"{psutil.virtual_memory().percent}%"
-            }
-            return json.dumps(info, indent=2)
-        except Exception as e:
-            return f"Error getting system info: {str(e)}"
-
-    def search_wikipedia(self, query: str):
-        try:
-            return wikipedia.summary(query, sentences=2)
-        except Exception as e:
-            return f"Error searching Wikipedia: {str(e)}"
-
-    def get_stock_price(self, symbol: str):
-        try:
-            stock = yf.Ticker(symbol)
-            price = stock.history(period="1d")['Close'].iloc[-1]
-            return f"The current price of {symbol} is ${price:.2f}"
-        except Exception as e:
-            return f"Error fetching stock price: {str(e)}"
-
-    def get_world_time(self, timezone: str):
-        try:
-            url = f"http://worldtimeapi.org/api/timezone/{timezone}"
-            response = requests.get(url)
-            if response.status_code == 200:
-                data = response.json()
-                return f"The time in {timezone} is {data['datetime']}"
-            return "Invalid timezone or API error."
-        except Exception as e:
-            return f"Error fetching time: {str(e)}"
+            yield {"type": "error", "content": f"Critical Error: {str(e)}"}
+            break
